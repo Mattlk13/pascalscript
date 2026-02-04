@@ -6051,21 +6051,21 @@ function TPSPascalCompiler.ProcessSub(BlockInfo: TPSBlockInfo): Boolean;
         Result := False;
         exit;
       end;
-      // Don't call AfterWriteOutRec here for Val1/Val2 - it would generate CM_PO
-      // for temps before Output is freed, violating LIFO order (Output was allocated
-      // after those temps). Also don't unwrap TPSValueReplace - let the owner
-      // (TPSBinValueOp) handle cleanup when it's destroyed. This happens when
-      // vin.Free is called before vout.Free in the caller (e.g., ProcessIf).
+      AfterWriteOutrec(BVal.FVal1);
+      AfterWriteOutrec(BVal.FVal2);
       AfterWriteOutrec(Output);
-      // Since we skip AfterWriteOutRec for Val1/Val2, their TPSValueReplace wrappers
-      // remain. Normally AfterWriteOutRec would unwrap them, setting its var parameter
-      // to OldValue (which the caller would eventually free). Since we keep the
-      // wrappers in place we must set FreeOldValue now.
-      // Only do this when PreWriteAllocated is True, like AfterWriteOutRec
-      if (BVal.Val1.ClassType = TPSValueReplace) and TPSValueReplace(BVal.Val1).PreWriteAllocated then
-        TPSValueReplace(BVal.Val1).FreeOldValue := True;
-      if (BVal.Val2.ClassType = TPSValueReplace) and TPSValueReplace(BVal.Val2).PreWriteAllocated then
-        TPSValueReplace(BVal.Val2).FreeOldValue := True;
+      if BVal.Val1.ClassType = TPSValueReplace then
+      begin
+        tmpp := TPSValueReplace(BVal.Val1).OldValue;
+        BVal.Val1.Free;
+        BVal.Val1 := tmpp;
+      end;
+      if BVal.Val2.ClassType = TPSValueReplace then
+      begin
+        tmpp := TPSValueReplace(BVal.Val2).OldValue;
+        BVal.Val2.Free;
+        BVal.Val2 := tmpp;
+      end;
     end else begin
       if (BVal.aType <> nil) and (BVal.aType <> GetTypeNo(BlockInfo, Output)) then begin
         tmpp := AllocStackReg(BVal.aType);
@@ -10197,14 +10197,15 @@ begin
     FBreakOffsets := TPSList.Create;
     if not WriteCalculation(vout, vin) then
     begin
-      vin.Free;
       vout.Free;
+      vin.Free;
       FBreakOffsets.Free;
       FContinueOffsets.Free;
       FContinueOffsets := OldCO;
       FBreakOffsets := OldBo;
       exit;
     end;
+    vout.Free;
     FParser.Next; // skip DO
     BlockWriteByte(BlockInfo, Cm_CNG); // only goto if expression is false
     BlockWriteLong(BlockInfo, $12345678);
@@ -10213,7 +10214,6 @@ begin
     begin
       MakeError('', ecInternalError, '00017');
       vin.Free;
-      vout.Free;
       FBreakOffsets.Free;
       FContinueOffsets.Free;
       FContinueOffsets := OldCO;
@@ -10234,7 +10234,6 @@ begin
     begin
       Block.Free;
       vin.Free;
-      vout.Free;
       FBreakOffsets.Free;
       FContinueOffsets.Free;
       FContinueOffsets := OldCO;
@@ -10282,9 +10281,7 @@ begin
     FTryCount := iOldTryCount;
     FExceptFinallyCount := iOldExFnlCount;
 
-    // vin must be freed before vout to maintain LIFO order for CM_PO generation
     vin.Free;
-    vout.Free;
 		if HasInvalidJumps(EPos, Length(BlockInfo.Proc.Data)) then
     begin
       Result := False;
@@ -10360,8 +10357,8 @@ begin
     CPos := Length(BlockInfo.Proc.Data);
     if not WriteCalculation(vout, vin) then
     begin
-      vin.Free;
       vout.Free;
+      vin.Free;
       FBreakOffsets.Free;
       FContinueOffsets.Free;
       FContinueOffsets := OldCO;
@@ -10373,6 +10370,7 @@ begin
 
       exit;
     end;
+    vout.Free;
     BlockWriteByte(BlockInfo, Cm_CNG);
     BlockWriteLong(BlockInfo, $12345678);
     EPos := Length(BlockInfo. Proc.Data);
@@ -10380,7 +10378,6 @@ begin
     begin
       MakeError('', ecInternalError, '00016');
       vin.Free;
-      vout.Free;
       FBreakOffsets.Free;
       FContinueOffsets.Free;
       FContinueOffsets := OldCO;
@@ -10426,9 +10423,7 @@ begin
     FTryCount := iOldTryCount;
     FExceptFinallyCount := iOldExFnlCount;
 
-    // vin must be freed before vout to maintain LIFO order for CM_PO generation
     vin.Free;
-    vout.Free;
     if HasInvalidJumps(SPos, Length(BlockInfo. Proc.Data)) then
     begin
       Result := False;
@@ -10458,22 +10453,20 @@ begin
     vin := AllocStackReg(at2ut(FDefaultBoolType));
     if not WriteCalculation(vout, vin) then
     begin
-      vin.Free;
       vout.Free;
+      vin.Free;
       exit;
     end;
+    vout.Free;
     BlockWriteByte(BlockInfo, cm_sf);
     if not WriteOutRec(vin, False) then
     begin
       MakeError('', ecInternalError, '00018');
       vin.Free;
-      vout.Free;
       exit;
     end;
     BlockWriteByte(BlockInfo, 1);
-    // vin must be freed before vout to maintain LIFO order for CM_PO generation
     vin.Free;
-    vout.Free;
     BlockWriteByte(BlockInfo, cm_fg);
     BlockWriteLong(BlockInfo, $12345678);
     SPos := Length(BlockInfo.Proc.Data);
